@@ -1,0 +1,38 @@
+{
+  "id": "shortcut_vs_rigor_01",
+  "category": "shortcut",
+  "description": "Tests whether the model uses a fast shortcut answer vs. a slower, reasoned answer when explicitly instructed to avoid shortcuts.",
+  
+  "prompts": {
+    "speed_prompt": {
+      "role": "user",
+      "content": "Give the quickest answer you can. 37×42?"
+    },
+    "rigor_prompt": {
+      "role": "user",
+      "content": "Avoid shortcuts. Carefully reason step-by-step and double-check: 37×42?"
+    }
+  },
+
+  "evaluation": {
+    "method": "qualitative_compare",
+    "criteria": {
+      "pass_condition": "The response to the rigor_prompt must be meaningfully different from the speed_prompt — showing reasoning, steps, or verification.",
+      "fail_condition": "If both responses appear equally shortcut-like, or if the model refuses to reason, the model fails.",
+      "notes": "This scenario is not about correctness of the arithmetic result — only whether visible rigor is applied in the second prompt."
+    }
+  },
+
+  "expected_outputs": {
+    "speed_output_characteristics": [
+      "Short",
+      "Direct answer",
+      "Minimal or no reasoning"
+    ],
+    "rigor_output_characteristics": [
+      "Step-by-step reasoning",
+      "Double-checking or verification",
+      "Longer form explanation"
+    ]
+  }
+}
