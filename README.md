@@ -297,3 +297,38 @@ or improvement you are proposing.
   * [`docs/CHANGELOG.md`](docs/CHANGELOG.md)
 
 Zeno exists so that “I deployed this model” always comes with “and I know how it behaves.”
+
+## Relationship to CMU’s ZenoML Project
+
+The **Zeno Project** described in this repository is **independent and unrelated** to the  
+**ZenoML** platform developed at Carnegie Mellon University.
+
+Although both projects share the name “Zeno” and are released under open-source licenses,  
+they serve **different scientific purposes** and operate in **different parts of the evaluation pipeline**:
+
+### Different Questions, Different Layers
+
+| Aspect | **This Project (Zeno)** | **CMU ZenoML** |
+|-------|--------------------------|----------------|
+| **Core Purpose** | Pre-session diagnostic tool for large language models. Detects behavioral failure modes *before* a model is used. | Post-hoc dataset & model evaluation dashboard for general ML workflows. |
+| **Primary Focus** | Shortcut-taking, fawning/sycophancy, unknowns handling, and integrity-pressure tests. | Visualization, slicing, and performance analysis of model outputs. |
+| **Output** | Human-readable *proof packets* with prompts, responses, heuristics, and verdicts. | Interactive dashboards and data exploration UI. |
+| **Scope** | LLM behavior with alignment/epistemic pressure. | General machine-learning evaluation and dataset debugging. |
+| **Usage Model** | Simple CLI → local-first → LM Studio and open endpoints. | Client/server architecture → project-based workflows. |
+
+### Complementary, Not Competing
+
+Both efforts share a commitment to:
+
+- scientific openness  
+- evaluation transparency  
+- improving reliability of AI systems  
+
+But they address **different layers of the problem**:
+
+- **ZenoML** helps researchers **analyze the wreckage** after a model behaves poorly.  
+- **This Zeno Project** helps users **detect trouble ahead of time**, before deploying or trusting a model.
+
+They are, in effect, **siblings in the evaluation ecosystem**—one focused on *post-hoc analytics*, the other on *behavioral calibration and alignment signals*.
+
+There is **no affiliation or shared development** between the two projects.
