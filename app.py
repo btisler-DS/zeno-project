@@ -110,8 +110,11 @@ def run_calibration():
     }
     
     try:
-        # Initialize calibrator
-        calibrator = ZenoCalibrator(config)
+        # Path to scenario files
+        scenario_dir = Path(__file__).parent / 'zeno_tests' / 'scenarios'
+        
+        # Initialize calibrator with config and scenario paths
+        calibrator = ZenoCalibrator(config, scenario_dir)
         
         # Run calibration
         result = calibrator.run()
