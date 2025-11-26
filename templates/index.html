@@ -487,7 +487,9 @@
                 
                 if (data.success) {
                     showStatus(`✓ Calibration complete! Session mode: ${data.session_mode}`, 'success');
-                    loadRuns();
+                    
+                    // Display results in modal
+                    displayCalibrationResults(data);
                 } else {
                     showStatus(`✗ Calibration failed: ${data.error}`, 'error');
                 }
@@ -499,62 +501,64 @@
             }
         });
         
-        // Load runs
-        async function loadRuns() {
-            try {
-                const response = await fetch('/api/runs');
-                const runs = await response.json();
-                
-                if (runs.length === 0) {
-                    runsList.innerHTML = `
-                        <div class="empty-state">
-                            <p>No calibration runs yet</p>
-                            <p style="margin-top: 10px; font-size: 0.9rem;">Run your first calibration to get started</p>
+        // Display calibration results
+        function displayCalibrationResults(data) {
+            const modalBody = document.getElementById('modalBody');
+            const modalTitle = document.getElementById('modalTitle');
+            
+            modalTitle.textContent = `Calibration Results - ${data.session_mode}`;
+            
+            // Create results HTML
+            const scoresHtml = `
+                <div style="margin-bottom: 20px;">
+                    <h3>Scores</h3>
+                    <div class="score-grid">
+                        <div class="score-item">
+                            <div class="score-label">Shortcut</div>
+                            <div class="score-value ${data.scores.shortcut === 1 ? 'score-pass' : 'score-fail'}">
+                                ${data.scores.shortcut.toFixed(2)}
+                            </div>
                         </div>
-                    `;
-                    return;
-                }
-                
-                runsList.innerHTML = runs.map(run => `
-                    <div class="run-item" onclick="showRunDetails('${run.id}')">
-                        <div class="run-header">
-                            <span class="run-model">${run.model_name}</span>
-                            <span class="session-mode mode-${run.session_mode.toLowerCase().split('_')[1]}">
-                                ${run.session_mode}
-                            </span>
+                        <div class="score-item">
+                            <div class="score-label">Fawning</div>
+                            <div class="score-value ${data.scores.fawning === 1 ? 'score-pass' : 'score-fail'}">
+                                ${data.scores.fawning.toFixed(2)}
+                            </div>
                         </div>
-                        <div class="run-timestamp">${new Date(run.timestamp).toLocaleString()}</div>
-                        <div class="score-grid">
-                            <div class="score-item">
-                                <div class="score-label">Shortcut</div>
-                                <div class="score-value ${run.scores.shortcut === 1 ? 'score-pass' : 'score-fail'}">
-                                    ${run.scores.shortcut.toFixed(2)}
-                                </div>
+                        <div class="score-item">
+                            <div class="score-label">Unknowns</div>
+                            <div class="score-value ${data.scores.unknowns === 1 ? 'score-pass' : 'score-fail'}">
+                                ${data.scores.unknowns.toFixed(2)}
                             </div>
-                            <div class="score-item">
-                                <div class="score-label">Fawning</div>
-                                <div class="score-value ${run.scores.fawning === 1 ? 'score-pass' : 'score-fail'}">
-                                    ${run.scores.fawning.toFixed(2)}
-                                </div>
-                            </div>
-                            <div class="score-item">
-                                <div class="score-label">Unknowns</div>
-                                <div class="score-value ${run.scores.unknowns === 1 ? 'score-pass' : 'score-fail'}">
-                                    ${run.scores.unknowns.toFixed(2)}
-                                </div>
-                            </div>
-                            <div class="score-item">
-                                <div class="score-label">Integrity</div>
-                                <div class="score-value ${run.scores.integrity === 1 ? 'score-pass' : 'score-fail'}">
-                                    ${run.scores.integrity.toFixed(2)}
-                                </div>
+                        </div>
+                        <div class="score-item">
+                            <div class="score-label">Integrity</div>
+                            <div class="score-value ${data.scores.integrity === 1 ? 'score-pass' : 'score-fail'}">
+                                ${data.scores.integrity.toFixed(2)}
                             </div>
                         </div>
                     </div>
-                `).join('');
-            } catch (error) {
-                console.error('Error loading runs:', error);
-            }
+                </div>
+            `;
+            
+            const testsHtml = data.tests ? Object.keys(data.tests).map(testName => `
+                <h3>${testName.charAt(0).toUpperCase() + testName.slice(1)} Test</h3>
+                <div class="test-output">${data.tests[testName]}</div>
+            `).join('') : '';
+            
+            modalBody.innerHTML = scoresHtml + '<h3>Test Details</h3>' + testsHtml;
+            modal.style.display = 'block';
+        }
+        
+        // Load runs
+        async function loadRuns() {
+            // Since we're not persisting runs, just show empty state
+            runsList.innerHTML = `
+                <div class="empty-state">
+                    <p>Results are shown immediately after calibration</p>
+                    <p style="margin-top: 10px; font-size: 0.9rem;">Run a calibration to see detailed results</p>
+                </div>
+            `;
         }
         
         // Show run details
@@ -589,9 +593,8 @@
             }
         });
         
-        // Load runs on page load
+        // Load runs on page load (will show empty state)
         loadRuns();
-        setInterval(loadRuns, 30000); // Refresh every 30 seconds
     </script>
 </body>
 </html>

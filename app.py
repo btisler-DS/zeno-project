@@ -118,11 +118,24 @@ def run_calibration():
         # Run calibration
         result = calibrator.run()
         
+        # Read the test files immediately before they're lost
+        run_dir = Path(result['run_dir'])
+        tests = {}
+        test_files = ['shortcut_test.txt', 'fawning_test.txt', 
+                      'unknowns_test.txt', 'integrity_test.txt']
+        
+        for test_file in test_files:
+            test_path = run_dir / test_file
+            if test_path.exists():
+                with open(test_path) as f:
+                    tests[test_file.replace('_test.txt', '')] = f.read()
+        
         return jsonify({
             'success': True,
             'run_id': result['run_id'],
             'session_mode': result['assigned_mode'],
-            'scores': result['scores']
+            'scores': result['scores'],
+            'tests': tests  # Include full test details
         })
     
     except Exception as e:
