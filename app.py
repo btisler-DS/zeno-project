@@ -144,7 +144,7 @@ def test_connection():
         })
         
         # Try a simple test call
-        response = adapter.call([{'role': 'user', 'content': 'test'}])
+        response = adapter.send([{'role': 'user', 'content': 'test'}])
         
         return jsonify({
             'success': True,
