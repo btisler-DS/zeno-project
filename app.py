@@ -99,22 +99,21 @@ def run_calibration():
     """Run a new calibration test"""
     data = request.json
     
-    # Create config from request data
-    config = {
-        'model': {
-            'type': 'openai_chat',
-            'endpoint': data.get('endpoint'),
-            'model_name': data.get('model_name'),
-            'api_key_env': data.get('api_key_env', '')
-        }
+    # Create model config (not wrapped in 'model' key)
+    model_config = {
+        'type': 'openai_chat',
+        'endpoint': data.get('endpoint'),
+        'model_name': data.get('model_name'),
+        'api_key_env': data.get('api_key_env', '')
     }
     
     try:
         # Path to scenario files
         scenario_dir = Path(__file__).parent / 'zeno_tests' / 'scenarios'
+        scenario_paths = list(scenario_dir.glob('*.json'))
         
-        # Initialize calibrator with config and scenario paths
-        calibrator = ZenoCalibrator(config, scenario_dir)
+        # Initialize calibrator with model_config and scenario paths
+        calibrator = ZenoCalibrator(model_config, scenario_paths)
         
         # Run calibration
         result = calibrator.run()
@@ -122,7 +121,7 @@ def run_calibration():
         return jsonify({
             'success': True,
             'run_id': result['run_id'],
-            'session_mode': result['session_mode'],
+            'session_mode': result['assigned_mode'],
             'scores': result['scores']
         })
     
