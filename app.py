@@ -1,178 +1,288 @@
-"""
-Zeno Web Application - Flask Backend
-Main application file for the web interface
-"""
-
-from flask import Flask, render_template, request, jsonify, send_from_directory
 import os
 import json
-import yaml
-from datetime import datetime
 from pathlib import Path
-import sys
+from typing import Any, Dict, List, Optional
 
-# Add the zeno_calibration module to the path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from flask import Flask, jsonify, render_template, request
 
-from zeno_calibration.calibrator import ZenoCalibrator
-from zeno_calibration.model_adapter import ModelAdapter
+# If these imports differ in your package, we will adjust after you run it once.
+try:
+    from zeno_calibration.calibrator import ZenoCalibrator
+    from zeno_calibration.model_adapter import ModelAdapter
+except ImportError:
+    # Fallback so the web app can still start in pure demo mode even
+    # if the calibration engine is not importable for some reason.
+    ZenoCalibrator = None  # type: ignore
+    ModelAdapter = None  # type: ignore
 
-app = Flask(__name__)
-app.config['RUNS_FOLDER'] = 'runs'
+app = Flask(__name__, template_folder="templates")
 
-# Ensure runs directory exists
-os.makedirs(app.config['RUNS_FOLDER'], exist_ok=True)
+# -----------------------------------------------------------------------------
+# Configuration
+# -----------------------------------------------------------------------------
 
+BASE_DIR = Path(__file__).resolve().parent
+RUNS_DIR = BASE_DIR / "runs"
 
-@app.route('/')
-def index():
-    """Main dashboard page"""
-    return render_template('index.html')
-
-
-@app.route('/api/runs')
-def get_runs():
-    """Get list of all calibration runs"""
-    runs_dir = Path(app.config['RUNS_FOLDER'])
-    runs = []
-    
-    if runs_dir.exists():
-        for run_folder in sorted(runs_dir.iterdir(), reverse=True):
-            if run_folder.is_dir():
-                meta_file = run_folder / 'meta.json'
-                summary_file = run_folder / 'summary.json'
-                
-                if meta_file.exists() and summary_file.exists():
-                    with open(meta_file) as f:
-                        meta = json.load(f)
-                    with open(summary_file) as f:
-                        summary = json.load(f)
-                    
-                    runs.append({
-                        'id': run_folder.name,
-                        'timestamp': meta.get('timestamp'),
-                        'model_name': meta.get('model_name'),
-                        'session_mode': summary.get('session_mode'),
-                        'scores': summary.get('scores', {})
-                    })
-    
-    return jsonify(runs)
+# Demo mode: ON by default for hosted app.
+# Set ZENO_DEMO_MODE=false to enable live calibration.
+DEMO_MODE = os.getenv("ZENO_DEMO_MODE", "true").lower() == "true"
 
 
-@app.route('/api/run/<run_id>')
-def get_run_details(run_id):
-    """Get detailed results for a specific run"""
-    run_dir = Path(app.config['RUNS_FOLDER']) / run_id
-    
-    if not run_dir.exists():
-        return jsonify({'error': 'Run not found'}), 404
-    
-    # Load all run data
-    meta_file = run_dir / 'meta.json'
-    summary_file = run_dir / 'summary.json'
-    
-    with open(meta_file) as f:
-        meta = json.load(f)
-    with open(summary_file) as f:
-        summary = json.load(f)
-    
-    # Load test details
-    test_files = ['shortcut_test.txt', 'fawning_test.txt', 
-                  'unknowns_test.txt', 'integrity_test.txt']
-    
-    tests = {}
-    for test_file in test_files:
-        test_path = run_dir / test_file
-        if test_path.exists():
-            with open(test_path) as f:
-                tests[test_file.replace('_test.txt', '')] = f.read()
-    
-    return jsonify({
-        'meta': meta,
-        'summary': summary,
-        'tests': tests
-    })
+# -----------------------------------------------------------------------------
+# Helpers
+# -----------------------------------------------------------------------------
+
+def load_json(path: Path) -> Optional[Dict[str, Any]]:
+    if not path.is_file():
+        return None
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
 
 
-@app.route('/api/calibrate', methods=['POST'])
-def run_calibration():
-    """Run a new calibration test"""
-    data = request.json
-    
-    # Create model config (not wrapped in 'model' key)
-    model_config = {
-        'type': 'openai_chat',
-        'endpoint': data.get('endpoint'),
-        'model_name': data.get('model_name'),
-        'api_key_env': data.get('api_key_env', '')
+def list_runs() -> List[Dict[str, Any]]:
+    """
+    Enumerate run folders under runs/, reading meta.json and summary.json
+    where present. This is what populates the 'Recent Calibration Runs' list.
+    """
+    runs: List[Dict[str, Any]] = []
+    if not RUNS_DIR.exists():
+        return runs
+
+    for entry in RUNS_DIR.iterdir():
+        if not entry.is_dir():
+            continue
+
+        run_id = entry.name
+        meta = load_json(entry / "meta.json") or {}
+        summary = load_json(entry / "summary.json") or {}
+
+        runs.append(
+            {
+                "run_id": run_id,
+                "meta": meta,
+                "summary": summary,
+            }
+        )
+
+    # Optional: sort newest first if meta has a timestamp field
+    def sort_key(item: Dict[str, Any]) -> Any:
+        ts = item.get("meta", {}).get("timestamp")
+        return ts or ""
+
+    runs.sort(key=sort_key, reverse=True)
+    return runs
+
+
+def load_run_details(run_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Load full details for a given run. We expect at minimum meta.json and
+    summary.json; optionally a full_result.json with transcripts.
+    """
+    run_dir = RUNS_DIR / run_id
+    if not run_dir.is_dir():
+        return None
+
+    meta = load_json(run_dir / "meta.json") or {}
+    summary = load_json(run_dir / "summary.json") or {}
+    # Name this file however you like; here we assume full_result.json
+    details = load_json(run_dir / "full_result.json") or {}
+
+    return {
+        "run_id": run_id,
+        "meta": meta,
+        "summary": summary,
+        "details": details,
     }
-    
+
+
+def make_model_adapter(endpoint: str, model_name: str, api_key: Optional[str]) -> Any:
+    """
+    Thin wrapper so we have a single place to adjust if your ModelAdapter
+    constructor signature is slightly different.
+    """
+    if ModelAdapter is None:
+        raise RuntimeError("ModelAdapter is not available in this environment")
+
+    # Adjust this dict to match your actual adapter config if needed.
+    config = {
+        "endpoint": endpoint,
+        "model_name": model_name,
+        "api_key": api_key,
+    }
+    return ModelAdapter(config)
+
+
+# -----------------------------------------------------------------------------
+# Routes
+# -----------------------------------------------------------------------------
+
+@app.route("/")
+def index() -> Any:
+    # The UI JS will call /api/runs after load.
+    return render_template("index.html")
+
+
+@app.route("/api/runs", methods=["GET"])
+def api_runs() -> Any:
+    runs = list_runs()
+    return jsonify({"runs": runs})
+
+
+@app.route("/api/run/<run_id>", methods=["GET"])
+def api_run(run_id: str) -> Any:
+    data = load_run_details(run_id)
+    if data is None:
+        return jsonify({"error": f"run '{run_id}' not found"}), 404
+    return jsonify(data)
+
+
+@app.route("/api/test-connection", methods=["POST"])
+def api_test_connection() -> Any:
+    """
+    Simple liveness test for a model endpoint. Sends a minimal chat-style
+    request through the ModelAdapter and checks for any response.
+    """
+    if ModelAdapter is None:
+        return jsonify(
+            {
+                "status": "error",
+                "message": "ModelAdapter is not available in this environment.",
+            }
+        ), 500
+
+    payload = request.get_json(force=True, silent=True) or {}
+    endpoint = payload.get("endpoint") or payload.get("model_endpoint")
+    model_name = payload.get("model_name")
+    api_key = payload.get("api_key") or payload.get("api_key_env")
+
+    if not endpoint or not model_name:
+        return (
+            jsonify(
+                {
+                    "status": "error",
+                    "message": "endpoint and model_name are required.",
+                }
+            ),
+            400,
+        )
+
     try:
-        # Path to scenario files
-        scenario_dir = Path(__file__).parent / 'zeno_tests' / 'scenarios'
-        scenario_paths = list(scenario_dir.glob('*.json'))
-        
-        # Initialize calibrator with model_config and scenario paths
-        calibrator = ZenoCalibrator(model_config, scenario_paths)
-        
-        # Run calibration
-        result = calibrator.run()
-        
-        # Read the test files immediately before they're lost
-        run_dir = Path(result['run_dir'])
-        tests = {}
-        test_files = ['shortcut_test.txt', 'fawning_test.txt', 
-                      'unknowns_test.txt', 'integrity_test.txt']
-        
-        for test_file in test_files:
-            test_path = run_dir / test_file
-            if test_path.exists():
-                with open(test_path) as f:
-                    tests[test_file.replace('_test.txt', '')] = f.read()
-        
-        return jsonify({
-            'success': True,
-            'run_id': result['run_id'],
-            'session_mode': result['assigned_mode'],
-            'scores': result['scores'],
-            'tests': tests  # Include full test details
-        })
-    
+        adapter = make_model_adapter(endpoint, model_name, api_key)
+        # Minimal probe; adjust to match your adapter's method name.
+        # We assume an OpenAI-style interface.
+        _ = adapter.chat(
+            messages=[{"role": "user", "content": "Test connection from Zeno."}],
+            max_tokens=8,
+        )
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        return (
+            jsonify(
+                {
+                    "status": "error",
+                    "message": f"Failed to reach model endpoint: {e}",
+                }
+            ),
+            502,
+        )
+
+    return jsonify({"status": "ok", "message": "Model endpoint responded successfully."})
 
 
-@app.route('/api/test-connection', methods=['POST'])
-def test_connection():
-    """Test model endpoint connection"""
-    data = request.json
-    
+@app.route("/api/calibrate", methods=["POST"])
+def api_calibrate() -> Any:
+    """
+    Run a full Zeno calibration. In demo mode this is disabled to avoid
+    burning API credits on a public instance. Locally, set
+    ZENO_DEMO_MODE=false to enable full runs.
+    """
+    if DEMO_MODE:
+        return (
+            jsonify(
+                {
+                    "status": "disabled",
+                    "message": "Live calibration is disabled in demo mode. "
+                    "Clone the repository or run with ZENO_DEMO_MODE=false to enable it.",
+                }
+            ),
+            403,
+        )
+
+    if ZenoCalibrator is None:
+        return (
+            jsonify(
+                {
+                    "status": "error",
+                    "message": "ZenoCalibrator is not available in this environment.",
+                }
+            ),
+            500,
+        )
+
+    payload = request.get_json(force=True, silent=True) or {}
+    endpoint = payload.get("endpoint") or payload.get("model_endpoint")
+    model_name = payload.get("model_name")
+    api_key = payload.get("api_key") or payload.get("api_key_env")
+
+    if not endpoint or not model_name:
+        return (
+            jsonify(
+                {
+                    "status": "error",
+                    "message": "endpoint and model_name are required.",
+                }
+            ),
+            400,
+        )
+
+    # This config dict will likely need to match your existing CLI/config
+    # schema. Adjust keys to align with your ZenoCalibrator implementation.
+    config = {
+        "model_endpoint": endpoint,
+        "model_name": model_name,
+        "api_key": api_key,
+        "runs_folder": str(RUNS_DIR),
+    }
+
     try:
-        adapter = ModelAdapter({
-            'type': 'openai_chat',
-            'endpoint': data.get('endpoint'),
-            'model_name': data.get('model_name'),
-            'api_key_env': data.get('api_key_env', '')
-        })
-        
-        # Try a simple test call
-        response = adapter.send([{'role': 'user', 'content': 'test'}])
-        
-        return jsonify({
-            'success': True,
-            'message': 'Connection successful'
-        })
-    
+        calibrator = ZenoCalibrator(config)
+        result = calibrator.run()  # Expecting something like {"run_id": "...", ...}
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        return (
+            jsonify(
+                {
+                    "status": "error",
+                    "message": f"Calibration failed: {e}",
+                }
+            ),
+            500,
+        )
+
+    # Optionally, you can re-read the run from disk to keep the JSON schema
+    # identical to what /api/run/<id> returns.
+    run_id = result.get("run_id")
+    if run_id:
+        details = load_run_details(run_id)
+    else:
+        details = None
+
+    return jsonify(
+        {
+            "status": "ok",
+            "run_id": run_id,
+            "result": result,
+            "details": details,
+        }
+    )
 
 
-if __name__ == '__main__':
-    # For production, use gunicorn instead
-    app.run(host='0.0.0.0', port=8080, debug=False)
+# -----------------------------------------------------------------------------
+# Entry point (useful for local dev)
+# -----------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    # Local development server; DigitalOcean will use gunicorn/app:app instead.
+    app.run(host="0.0.0.0", port=8080, debug=True)
