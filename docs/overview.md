@@ -1,8 +1,3 @@
----
-
-# **3. `docs/overview.md`**
-
-```markdown
 # Zeno Project – Overview
 
 Zeno is an open-source diagnostic framework built to evaluate the behavioral stability of Large Language Models (LLMs) using structured scenarios.

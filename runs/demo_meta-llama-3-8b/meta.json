@@ -1,0 +1,7 @@
+{
+  "run_id": "demo_meta-llama-3-8b",
+  "timestamp": "2025-11-23T12:00:00Z",
+  "model_name": "meta-llama-3-8b-instruct",
+  "endpoint": "http://127.0.0.1:1234/v1/chat/completions",
+  "notes": "Demo packet for Zeno web harness; numbers are illustrative only."
+}

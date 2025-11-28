@@ -1,6 +1,4 @@
-#  **1. `docs/INITIAL_BUILD_REPORT.md`**
 
-```markdown
 # Zeno Project — Initial Build and Validation Report
 **Version:** Zeno v0.2  
 **Date:** 2025-11-23  
